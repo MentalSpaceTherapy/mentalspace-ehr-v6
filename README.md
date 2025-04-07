@@ -48,7 +48,7 @@ MentalSpace EHR is designed to streamline administrative and clinical workflows 
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/mentalspace-ehr-v6.git
+   git clone https://github.com/mentalspacetherapy/mentalspace-ehr-v6.git
    cd mentalspace-ehr-v6
    ```
 
@@ -126,4 +126,4 @@ Additional documentation is available in the [docs](/mentalspace-ehr/docs) direc
 
 ## Contact
 
-[Contact information for the project maintainers] 
+[Contact information for the project maintainers]
