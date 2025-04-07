@@ -1,0 +1,28 @@
+// cypress/fixtures/users.json
+{
+  "admin": {
+    "email": "admin@mentalspace.com",
+    "password": "Password123!",
+    "role": "admin"
+  },
+  "clinician": {
+    "email": "clinician@mentalspace.com",
+    "password": "Password123!",
+    "role": "clinician"
+  },
+  "scheduler": {
+    "email": "scheduler@mentalspace.com",
+    "password": "Password123!",
+    "role": "scheduler"
+  },
+  "biller": {
+    "email": "biller@mentalspace.com",
+    "password": "Password123!",
+    "role": "biller"
+  },
+  "supervisor": {
+    "email": "supervisor@mentalspace.com",
+    "password": "Password123!",
+    "role": "supervisor"
+  }
+}

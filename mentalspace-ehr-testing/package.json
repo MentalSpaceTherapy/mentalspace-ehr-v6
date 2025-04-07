@@ -1,0 +1,7 @@
+{
+  "scripts": {
+    "test": "cypress run",
+    "test:open": "cypress open",
+    "test:e2e": "cypress run --spec 'cypress/e2e/workflows/*.cy.ts'"
+  }
+}

@@ -1,0 +1,180 @@
+version: '3'
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:14
+    container_name: mentalspace-postgres
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_DATABASE}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT}:5432"
+    networks:
+      - mentalspace-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API service
+  backend:
+    build:
+      context: ./mentalspace-ehr
+      dockerfile: Dockerfile
+    container_name: mentalspace-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      PORT: ${API_PORT}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_DATABASE: ${DB_DATABASE}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRE: ${JWT_EXPIRE}
+      JWT_COOKIE_EXPIRE: ${JWT_COOKIE_EXPIRE}
+    ports:
+      - "${API_PORT}:${API_PORT}"
+    volumes:
+      - ./mentalspace-ehr:/app
+      - /app/node_modules
+    networks:
+      - mentalspace-network
+    restart: unless-stopped
+
+  # Frontend service
+  frontend:
+    build:
+      context: ./mentalspace-ehr-frontend
+      dockerfile: Dockerfile
+    container_name: mentalspace-frontend
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: http://localhost:${API_PORT}/api
+      VITE_APP_VERSION: ${APP_VERSION}
+      VITE_ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+    ports:
+      - "${FRONTEND_PORT}:80"
+    volumes:
+      - ./mentalspace-ehr-frontend:/app
+      - /app/node_modules
+    networks:
+      - mentalspace-network
+    restart: unless-stopped
+
+  # Migrations service (runs and exits)
+  migrations:
+    build:
+      context: ./mentalspace-ehr-migrations
+      dockerfile: Dockerfile
+    container_name: mentalspace-migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_DATABASE: ${DB_DATABASE}
+    command: npm run typeorm:run
+    networks:
+      - mentalspace-network
+
+  # Monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: mentalspace-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - mentalspace-network
+    restart: unless-stopped
+
+  # Visualization with Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mentalspace-grafana
+    depends_on:
+      - prometheus
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "3000:3000"
+    networks:
+      - mentalspace-network
+    restart: unless-stopped
+
+  # Logging with ELK stack
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0
+    container_name: mentalspace-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - mentalspace-network
+    restart: unless-stopped
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:7.17.0
+    container_name: mentalspace-logstash
+    volumes:
+      - ./monitoring/logstash/pipeline:/usr/share/logstash/pipeline
+    ports:
+      - "5044:5044"
+      - "5000:5000/tcp"
+      - "5000:5000/udp"
+      - "9600:9600"
+    environment:
+      LS_JAVA_OPTS: "-Xmx256m -Xms256m"
+    networks:
+      - mentalspace-network
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.0
+    container_name: mentalspace-kibana
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    networks:
+      - mentalspace-network
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+
+networks:
+  mentalspace-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
+  elasticsearch_data:

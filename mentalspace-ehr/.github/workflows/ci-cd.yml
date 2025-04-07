@@ -1,0 +1,259 @@
+name: MentalSpace EHR CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build-and-test-backend:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mentalspace_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: './mentalspace-ehr/package-lock.json'
+    
+    - name: Install backend dependencies
+      run: |
+        cd mentalspace-ehr
+        npm ci
+    
+    - name: Run backend linting
+      run: |
+        cd mentalspace-ehr
+        npm run lint
+    
+    - name: Run backend tests
+      run: |
+        cd mentalspace-ehr
+        npm test
+      env:
+        NODE_ENV: test
+        MONGO_URI: mongodb://localhost:27017/mentalspace_test
+        JWT_SECRET: test_secret_key
+        JWT_EXPIRE: 1h
+    
+    - name: Run migrations tests
+      run: |
+        cd mentalspace-ehr-migrations
+        npm ci
+        npm run typeorm:test
+      env:
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_USERNAME: postgres
+        DB_PASSWORD: postgres
+        DB_DATABASE: mentalspace_test
+    
+    - name: Upload backend test results
+      uses: actions/upload-artifact@v3
+      with:
+        name: backend-test-results
+        path: mentalspace-ehr/coverage/
+      if: always()
+
+  build-and-test-frontend:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: './mentalspace-ehr-frontend/package-lock.json'
+    
+    - name: Install frontend dependencies
+      run: |
+        cd mentalspace-ehr-frontend
+        npm ci
+    
+    - name: Run frontend linting
+      run: |
+        cd mentalspace-ehr-frontend
+        npm run lint
+    
+    - name: Run frontend tests
+      run: |
+        cd mentalspace-ehr-frontend
+        npm test
+    
+    - name: Build frontend
+      run: |
+        cd mentalspace-ehr-frontend
+        npm run build
+    
+    - name: Upload frontend build
+      uses: actions/upload-artifact@v3
+      with:
+        name: frontend-build
+        path: mentalspace-ehr-frontend/dist/
+    
+    - name: Upload frontend test results
+      uses: actions/upload-artifact@v3
+      with:
+        name: frontend-test-results
+        path: mentalspace-ehr-frontend/coverage/
+      if: always()
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: [build-and-test-backend, build-and-test-frontend]
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    
+    - name: Run npm audit (backend)
+      run: |
+        cd mentalspace-ehr
+        npm audit --production
+    
+    - name: Run npm audit (frontend)
+      run: |
+        cd mentalspace-ehr-frontend
+        npm audit --production
+    
+    - name: Run OWASP ZAP Scan
+      uses: zaproxy/action-baseline@v0.7.0
+      with:
+        target: 'http://localhost:3000'
+        rules_file_name: '.zap/rules.tsv'
+        cmd_options: '-a'
+      if: github.event_name == 'pull_request' && github.base_ref == 'main'
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: [build-and-test-backend, build-and-test-frontend, security-scan]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download frontend build
+      uses: actions/download-artifact@v3
+      with:
+        name: frontend-build
+        path: frontend-build
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.DOCKER_HUB_TOKEN }}
+    
+    - name: Build and push backend Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: ./mentalspace-ehr
+        push: true
+        tags: mentalspace/ehr-backend:staging
+    
+    - name: Build and push frontend Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: ./mentalspace-ehr-frontend
+        push: true
+        tags: mentalspace/ehr-frontend:staging
+    
+    - name: Deploy to staging environment
+      run: |
+        echo "Deploying to staging environment..."
+        # In a real setup, this would use kubectl, helm, or another deployment tool
+        # to update the staging environment with the new Docker images
+    
+    - name: Run integration tests on staging
+      run: |
+        echo "Running integration tests on staging environment..."
+        cd mentalspace-ehr-testing
+        npm ci
+        npm run test:e2e
+      env:
+        CYPRESS_BASE_URL: https://staging.mentalspace-ehr.com
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    environment:
+      name: production
+      url: https://mentalspace-ehr.com
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download frontend build
+      uses: actions/download-artifact@v3
+      with:
+        name: frontend-build
+        path: frontend-build
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.DOCKER_HUB_TOKEN }}
+    
+    - name: Build and push backend Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: ./mentalspace-ehr
+        push: true
+        tags: mentalspace/ehr-backend:latest,mentalspace/ehr-backend:${{ github.sha }}
+    
+    - name: Build and push frontend Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: ./mentalspace-ehr-frontend
+        push: true
+        tags: mentalspace/ehr-frontend:latest,mentalspace/ehr-frontend:${{ github.sha }}
+    
+    - name: Deploy to production environment
+      run: |
+        echo "Deploying to production environment..."
+        # In a real setup, this would use kubectl, helm, or another deployment tool
+        # to update the production environment with the new Docker images
+    
+    - name: Run smoke tests on production
+      run: |
+        echo "Running smoke tests on production environment..."
+        cd mentalspace-ehr-testing
+        npm ci
+        npm run test:smoke
+      env:
+        CYPRESS_BASE_URL: https://mentalspace-ehr.com

@@ -1,0 +1,38 @@
+{
+  "name": "mentalspace-ehr-migrations",
+  "version": "1.0.0",
+  "description": "Database migrations for MentalSpace EHR system",
+  "main": "index.js",
+  "scripts": {
+    "typeorm": "typeorm-ts-node-commonjs",
+    "migration:generate": "npm run typeorm migration:generate -- -d src/config/data-source.ts",
+    "migration:run": "npm run typeorm migration:run -- -d src/config/data-source.ts",
+    "migration:revert": "npm run typeorm migration:revert -- -d src/config/data-source.ts",
+    "seed": "ts-node src/seed/index.ts",
+    "build": "tsc",
+    "start": "ts-node src/index.ts"
+  },
+  "keywords": [
+    "ehr",
+    "database",
+    "migrations",
+    "typeorm"
+  ],
+  "author": "MentalSpace Team",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.0.3",
+    "pg": "^8.10.0",
+    "reflect-metadata": "^0.1.13",
+    "typeorm": "^0.3.15",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.2",
+    "@types/node": "^18.15.11",
+    "@types/uuid": "^9.0.1",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.0.4"
+  }
+}

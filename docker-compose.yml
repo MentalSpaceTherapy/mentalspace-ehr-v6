@@ -1,0 +1,112 @@
+version: '3'
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:14
+    container_name: mentalspace-postgres
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_DATABASE:-mentalspace}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    networks:
+      - mentalspace-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Database administration tool
+  adminer:
+    image: adminer
+    container_name: mentalspace-adminer
+    ports:
+      - "${ADMINER_PORT:-8080}:8080"
+    networks:
+      - mentalspace-network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  # Backend API service
+  backend:
+    build:
+      context: ./mentalspace-ehr
+      dockerfile: Dockerfile
+    container_name: mentalspace-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${API_PORT:-4000}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_DATABASE: ${DB_DATABASE:-mentalspace}
+      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret}
+      JWT_EXPIRE: ${JWT_EXPIRE:-24h}
+      JWT_COOKIE_EXPIRE: ${JWT_COOKIE_EXPIRE:-24}
+      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:4000/api}
+      REACT_APP_API_KEY: ${REACT_APP_API_KEY:-your_api_key}
+    ports:
+      - "${API_PORT:-4000}:${API_PORT:-4000}"
+    volumes:
+      - ./mentalspace-ehr:/app
+      - /app/node_modules
+    networks:
+      - mentalspace-network
+    restart: unless-stopped
+
+  # Frontend service
+  frontend:
+    build:
+      context: ./mentalspace-ehr-frontend
+      dockerfile: Dockerfile
+    container_name: mentalspace-frontend
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: ${REACT_APP_API_URL:-http://localhost:4000/api}
+      VITE_APP_VERSION: ${APP_VERSION:-1.0.0}
+      VITE_ENCRYPTION_KEY: ${ENCRYPTION_KEY:-your_encryption_key}
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    volumes:
+      - ./mentalspace-ehr-frontend:/app
+      - /app/node_modules
+    networks:
+      - mentalspace-network
+    restart: unless-stopped
+
+  # Migrations service (runs and exits)
+  migrations:
+    build:
+      context: ./mentalspace-ehr-migrations
+      dockerfile: Dockerfile
+    container_name: mentalspace-migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_DATABASE: ${DB_DATABASE:-mentalspace}
+    command: npm run typeorm:run
+    networks:
+      - mentalspace-network
+
+networks:
+  mentalspace-network:
+    driver: bridge
+
+volumes:
+  postgres_data: 

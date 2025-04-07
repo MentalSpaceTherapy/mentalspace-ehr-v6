@@ -1,0 +1,78 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x]
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    
+    - name: Install frontend dependencies
+      run: |
+        cd mentalspace-ehr-frontend
+        npm ci
+    
+    - name: Install backend dependencies
+      run: |
+        cd mentalspace-ehr
+        npm ci
+    
+    - name: Type check frontend
+      run: |
+        cd mentalspace-ehr-frontend
+        npx tsc --noEmit
+    
+    - name: Lint frontend
+      run: |
+        cd mentalspace-ehr-frontend
+        npm run lint
+      
+    - name: Run frontend tests
+      run: |
+        cd mentalspace-ehr-frontend
+        npm test
+    
+    - name: Build frontend
+      run: |
+        cd mentalspace-ehr-frontend
+        npm run build
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-files
+        path: mentalspace-ehr-frontend/dist/
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: build-files
+        path: dist/
+    
+    - name: Deploy to GitHub Pages
+      uses: JamesIves/github-pages-deploy-action@v4
+      with:
+        folder: dist
+        branch: gh-pages 
