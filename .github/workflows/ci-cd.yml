@@ -23,32 +23,27 @@ jobs:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
     
-    - name: Install frontend dependencies
+    - name: Install dependencies
       run: |
         cd mentalspace-ehr-frontend
         npm ci
     
-    - name: Install backend dependencies
-      run: |
-        cd mentalspace-ehr
-        npm ci
-    
-    - name: Type check frontend
+    - name: Type check
       run: |
         cd mentalspace-ehr-frontend
         npx tsc --noEmit
     
-    - name: Lint frontend
+    - name: Lint
       run: |
         cd mentalspace-ehr-frontend
         npm run lint
       
-    - name: Run frontend tests
+    - name: Run tests
       run: |
         cd mentalspace-ehr-frontend
         npm test
     
-    - name: Build frontend
+    - name: Build
       run: |
         cd mentalspace-ehr-frontend
         npm run build

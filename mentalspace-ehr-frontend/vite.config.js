@@ -13,6 +13,7 @@ export default defineConfig({
             },
         }),
     ],
+    base: '/mentalspace-ehr-v6/',
     build: {
         // Skip TypeScript type checking during build
         sourcemap: true,
